@@ -1,0 +1,4 @@
+flask
+pymupdf              # PDF extraction (fitz)
+sentence-transformers # Hugging Face embeddings
+chromadb              # Open-source vector database
