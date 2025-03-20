@@ -1,4 +1,3 @@
-# Add this to all files under "utils"
 import sys
 sys.path.append("..")
 from .embedding import generate_embeddings
@@ -21,4 +20,3 @@ class VectorDB:
 
         top_indices = np.argsort(similarities)[-top_k:][::-1]
         return [self.documents[i] for i in top_indices]
-

@@ -10,12 +10,3 @@ def chunk_pdf(pdf_path, chunk_size=1000):
 
     valid_chunks = [chunk.strip() for chunk in chunks if len(chunk.strip()) > 100]
     return valid_chunks
-
-
-### utils/embedding.py
-from sentence_transformers import SentenceTransformer
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-def generate_embeddings(text):
-    return model.encode(text).tolist()

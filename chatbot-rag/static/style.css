@@ -45,8 +45,8 @@ body {
     flex: 1;
     padding: 20px;
     overflow-y: auto;
-    scrollbar-width: none; /* Hide scrollbar for Firefox */
-    -ms-overflow-style: none; /* Hide scrollbar for IE/Edge */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
 }
 
 /* Hide scrollbar for Chrome/Safari */
@@ -141,3 +141,29 @@ button:hover {
         transform: translateY(0);
     }
 }
+
+/* Loading Message */
+.loading-msg {
+    align-self: center;
+    color: #aaa;
+    font-style: italic;
+} 
+
+/* Markdown-specific Styling */
+.bot-msg ul {
+    padding-left: 20px;
+    margin: 10px 0;
+}
+
+.bot-msg strong {
+    color: #fff;
+}
+
+.bot-msg em {
+    color: #ffd700;
+} 
+
+.bot-msg br {
+    display: block;
+    margin: 8px 0;
+} 

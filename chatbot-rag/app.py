@@ -1,10 +1,10 @@
 from flask import Flask, render_template, request, jsonify
 import os
+import ollama
 from utils.chunking import chunk_pdf
 from utils.embedding import generate_embeddings
 from utils.vector_db import VectorDB
 from transformers import pipeline
-
 import re
 
 app = Flask(__name__)
@@ -12,9 +12,10 @@ app = Flask(__name__)
 # Initialize Vector DB
 db = VectorDB()
 
-# Load summarization model
+# Load summarization model (you can remove this if Ollama will handle everything)
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
+# Preprocess the PDF and store embeddings in the vector DB
 def preprocess_chunks(pdf_dir):
     """Processes PDFs and stores embeddings in the vector DB."""
     for pdf_file in os.listdir(pdf_dir):
@@ -28,10 +29,8 @@ def preprocess_chunks(pdf_dir):
 pdf_dir = "data/"
 preprocess_chunks(pdf_dir)
 
-
 def intelligent_formatting(text, user_input):
     """Enhanced formatting for chatbot's response with better structure detection."""
-
     def add_indentation(text):
         lines = text.strip().split("\n")
         formatted_lines = []
@@ -80,6 +79,10 @@ def intelligent_formatting(text, user_input):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     user_input = request.json.get("message")
@@ -95,9 +98,30 @@ def chat():
         combined_answer = " ".join(results)
         print(f"📚 Combined Answer (Before Formatting): {combined_answer}")
 
-        formatted_response = intelligent_formatting(combined_answer, user_input)
+        # Use Ollama for response generation
+        try:
+            response = ollama.chat(model="deepseek-r1:1.5b", messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": f"Based on the following context: {combined_answer}, answer the question: {user_input}"}
+            ])
 
-        print(f"📊 Formatted Response: {formatted_response}")
+            # Extract the content properly
+            raw_content = getattr(response.message, 'content', "")
+
+            print(f"📊 Raw Content: {raw_content}")
+
+            # Remove all <think>...</think> sections using regular expressions
+            cleaned_content = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
+
+            # Fallback if cleaning removes everything
+            formatted_response = cleaned_content if cleaned_content else "No content available from model."
+
+        except Exception as e:
+            formatted_response = f"Error occurred while processing the request: {str(e)}"
+            print(f"📉 Error: {str(e)}")
+
+        # Log the cleaned and formatted response
+        print(f"📊 Formatted Response Sent to Frontend: {formatted_response}")
 
         return jsonify({"response": formatted_response})
     else:
@@ -106,3 +130,5 @@ def chat():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
