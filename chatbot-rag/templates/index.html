@@ -8,7 +8,7 @@
 
 <body>
     <div class="chat-container">
-        <div class="chat-header">🤖 RAG Chatbot</div>
+        <div class="chat-header">🤖 Wildlife bot</div>
 
         <!-- Chat Display -->
         <div id="chatbox"></div>
@@ -16,6 +16,10 @@
         <!-- Input Section -->
         <div class="input-container">
             <input id="user-input" placeholder="Ask something..." />
+            <select id="language-select">
+                <option value="en">English</option>
+                <option value="hi">हिन्दी (Hindi)</option>
+            </select>
             <button onclick="sendMessage()">Send 🚀</button>
         </div>
     </div>
@@ -23,39 +27,38 @@
     <script>
         // Function to convert basic Markdown syntax to HTML
         function markdownToHtml(markdown) {
-            // Bold (**text** or __text__)
-            markdown = markdown.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            markdown = markdown.replace(/__(.*?)__/g, '<strong>$1</strong>');
-
-            // Italics (*text* or _text_)
-            markdown = markdown.replace(/\*(.*?)\*/g, '<em>$1</em>');
-            markdown = markdown.replace(/_(.*?)_/g, '<em>$1</em>');
-
-            // Bullet Points (- or *)
-            markdown = markdown.replace(/^- (.*?)(\n|$)/gm, '<li>$1</li>');
-            markdown = markdown.replace(/\n<li>/g, '<ul><li>');
-            markdown = markdown.replace(/<\/li>(?!\n<li>)/g, '</li></ul>');
-
-            // Line Breaks (preserve new lines)
-            markdown = markdown.replace(/\n/g, '<br>');
-
+            markdown = markdown
+                // Bold (**text** or __text__)
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/__(.*?)__/g, '<strong>$1</strong>')
+                // Italics (*text* or _text_)
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/_(.*?)_/g, '<em>$1</em>')
+                // Bullet Points (- or *)
+                .replace(/^- (.*?)(\n|$)/gm, '<li>$1</li>')
+                .replace(/\n<li>/g, '<ul><li>')
+                .replace(/<\/li>(?!\n<li>)/g, '</li></ul>')
+                // Line Breaks (preserve new lines)
+                .replace(/\n/g, '<br>');
             return markdown;
         }
 
         async function sendMessage() {
             const input = document.getElementById('user-input');
+            const languageSelect = document.getElementById('language-select');
             const chatbox = document.getElementById('chatbox');
 
             const userMessage = input.value.trim();
+            const language = languageSelect.value;
             if (!userMessage) return;
 
-            // Add user message
+            // Add user message to chat
             const userMessageDiv = document.createElement('div');
             userMessageDiv.classList.add('user-msg');
             userMessageDiv.textContent = userMessage;
             chatbox.appendChild(userMessageDiv);
 
-            // Add loading message
+            // Add initial loading message
             const loadingMessageDiv = document.createElement('div');
             loadingMessageDiv.classList.add('loading-msg');
             loadingMessageDiv.textContent = "Thinking... ⏳";
@@ -67,10 +70,18 @@
                 const response = await fetch("/chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: userMessage })
+                    body: JSON.stringify({ message: userMessage, language: language })
                 });
 
                 const data = await response.json();
+
+                // Update loading message for translation if needed
+                if (language !== "en") {
+                    loadingMessageDiv.textContent = "Translating... 🌐";
+                }
+
+                // Simulate translation delay for a better user experience
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
                 // Remove loading message
                 chatbox.removeChild(loadingMessageDiv);
@@ -78,7 +89,7 @@
                 // Add bot response with Markdown support
                 const botMessageDiv = document.createElement('div');
                 botMessageDiv.classList.add('bot-msg');
-                botMessageDiv.innerHTML = markdownToHtml(data.response); // Render Markdown
+                botMessageDiv.innerHTML = markdownToHtml(data.response);
                 chatbox.appendChild(botMessageDiv);
 
             } catch (error) {

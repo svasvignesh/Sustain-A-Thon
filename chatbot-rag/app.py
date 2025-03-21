@@ -6,23 +6,27 @@ from utils.embedding import generate_embeddings
 from utils.vector_db import VectorDB
 from transformers import pipeline
 import re
+import torch
 
 app = Flask(__name__)
 
-# Initialize Vector DB
+
 db = VectorDB()
 
-# Load summarization model (you can remove this if Ollama will handle everything)
+# Load summarization and translation models
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+
+try:
+    translator = pipeline("translation_en_to_hi", model="Helsinki-NLP/opus-mt-en-hi")
+except Exception as e:
+    print(f"Error loading translation model: {e}")
 
 # Preprocess the PDF and store embeddings in the vector DB
 def preprocess_chunks(pdf_dir):
-    """Processes PDFs and stores embeddings in the vector DB."""
     for pdf_file in os.listdir(pdf_dir):
         if pdf_file.endswith(".pdf"):
             chunks = chunk_pdf(os.path.join(pdf_dir, pdf_file))
             for idx, chunk in enumerate(chunks):
-                print(f"📚 Chunk {idx + 1} (Length: {len(chunk)} chars):\n{chunk}\n{'=' * 50}")
                 embedding = generate_embeddings(chunk)
                 db.add_document(chunk, embedding)
 
@@ -30,105 +34,96 @@ pdf_dir = "data/"
 preprocess_chunks(pdf_dir)
 
 def intelligent_formatting(text, user_input):
-    """Enhanced formatting for chatbot's response with better structure detection."""
     def add_indentation(text):
         lines = text.strip().split("\n")
         formatted_lines = []
 
-        # Regular expressions to detect sections
         section_patterns = {
-            "main": re.compile(r"^(I{1,3}\.|IV\.)"),  # Matches I., II., III., IV.
-            "sub": re.compile(r"^(A|B|C)\."),        # Matches A., B., C.
-            "sub_sub": re.compile(r"^\d+\."),        # Matches 1., 2., 3.
+            "main": re.compile(r"^(I{1,3}\.|IV\.)"),
+            "sub": re.compile(r"^(A|B|C)\."), 
+            "sub_sub": re.compile(r"^\d+\."),
         }
 
         for line in lines:
             stripped = line.strip()
-
-            # Main section (I., II., III., etc.)
             if section_patterns["main"].match(stripped):
                 formatted_lines.append(f"\n➡️ {stripped}")
-            
-            # Subsection (A., B., C., etc.)
             elif section_patterns["sub"].match(stripped):
                 formatted_lines.append(f"    • {stripped}")
-
-            # Sub-subsection (1., 2., etc.)
             elif section_patterns["sub_sub"].match(stripped):
                 formatted_lines.append(f"        {stripped}")
-
-            # Normal line, provide deeper indentation
             else:
                 formatted_lines.append(f"          - {stripped}")
 
         return "\n".join(formatted_lines)
 
-    # Prioritize point format if the user asks for it
     if "in points" in user_input.lower():
         sentences = text.split(". ")
         return "\n".join([f"• {sentence.strip()}" for sentence in sentences if sentence])
 
-    # Summarize only if explicitly requested
     if "summarize" in user_input.lower():
         text = summarizer(text, max_length=150, min_length=80, do_sample=False)[0]["summary_text"]
 
-    # Auto-detect and format using structured points
     return add_indentation(text)
 
+def chunk_and_translate(text, max_length=512):
+    """Chunk large text and translate in parts."""
+    chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+    translated_text = []
+
+    for chunk in chunks:
+        try:
+            output = translator(chunk, max_length=600)[0]["translation_text"]
+            translated_text.append(output)
+        except Exception as e:
+            translated_text.append("अनुवाद में त्रुटि हुई।")
+
+    return " ".join(translated_text)
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
-
-
-
 @app.route("/chat", methods=["POST"])
 def chat():
     user_input = request.json.get("message")
+    language = request.json.get("language", "en")
 
-    # Query the vector database (retrieve top 3 results for better context)
     results = db.query(user_input, top_k=3)
 
-    print(f"💬 User Input: {user_input}")
+    print(f"💬 User Input: {user_input}, Language: {language}")
     print(f"🔍 Query Results: {results}")
 
     if results:
-        # Combine the most relevant chunks
         combined_answer = " ".join(results)
         print(f"📚 Combined Answer (Before Formatting): {combined_answer}")
 
-        # Use Ollama for response generation
         try:
             response = ollama.chat(model="deepseek-r1:1.5b", messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": f"Based on the following context: {combined_answer}, answer the question: {user_input}"}
             ])
 
-            # Extract the content properly
             raw_content = getattr(response.message, 'content', "")
 
-            print(f"📊 Raw Content: {raw_content}")
-
-            # Remove all <think>...</think> sections using regular expressions
+            # Clean unwanted tags and artifacts
             cleaned_content = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
-
-            # Fallback if cleaning removes everything
             formatted_response = cleaned_content if cleaned_content else "No content available from model."
+
+            # Translate if Hindi is selected
+            if language == "hi":
+                print("🌐 Translating to Hindi...")
+                formatted_response = chunk_and_translate(formatted_response)
 
         except Exception as e:
             formatted_response = f"Error occurred while processing the request: {str(e)}"
-            print(f"📉 Error: {str(e)}")
+            
 
-        # Log the cleaned and formatted response
-        print(f"📊 Formatted Response Sent to Frontend: {formatted_response}")
-
+        print(f"📊 Final Response Sent to Frontend: {formatted_response}")
         return jsonify({"response": formatted_response})
+
     else:
         return jsonify({"response": "I'm sorry, I couldn't find relevant information."})
 
-
 if __name__ == "__main__":
     app.run(debug=True)
-
-
